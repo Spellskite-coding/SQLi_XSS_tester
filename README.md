@@ -1,74 +1,74 @@
 # SQLi_XSS_tester
 
-Scanner d'injections **SQL** et de **Cross-Site Scripting** en Python pur (aucune dépendance tierce), avec détection d'injections aveugles, contournement de WAF et génération de rapports.
+**SQL Injection** and **Cross-Site Scripting** scanner in pure Python (no third-party dependency), with blind injection detection, WAF bypass and report generation.
 
-> Outil de test pour audits de sécurité autorisés (pentest, CTF, labo personnel). Ne l'utilisez jamais contre une cible sans autorisation explicite.
+> Testing tool for authorized security audits (pentest, CTF, personal lab). Never use it against a target without explicit authorization.
 
-## Fonctionnalités
+## Features
 
-- **Zéro dépendance externe** : uniquement la bibliothèque standard de Python 3.8+ (`urllib`, `html.parser`, `concurrent.futures`, `http.cookiejar`, `json`). Pas de `pip install` requis.
-- **Crawling automatique** des formulaires et liens internes (même origine, profondeur bornée).
-- **~90 payloads SQLi + ~73 payloads XSS** par point d'injection (arsenal complet par défaut, mode `--quick` disponible pour un arsenal réduit ~14/~12) :
-  - SQLi : tautologies d'authentification, UNION-based (1 à 12 colonnes), error-based multi-SGBD (MySQL, PostgreSQL, MSSQL, Oracle, SQLite), requêtes empilées, obfuscation anti-WAF (commentaires inline, casse, encodages, alternatives à l'espace), un peu de NoSQL en bonus.
-  - XSS : balises/gestionnaires d'événements variés (`img`, `svg`, `video`, `details`, `marquee`, `iframe`, `object`…), échappement d'attribut, bypass sans espace/parenthèse, encodages multiples (entités HTML nommées/décimales/hex, URL simple/double, `\u`, découpage de balise), polyglottes.
-  - SSTI : marqueurs `{{7*7}}`, `${7*7}`, `#{7*7}`, etc., avec une vraie vérification d'évaluation côté serveur (recherche du résultat calculé `49`, pas juste de la réflexion du marqueur).
-- **SQLi error-based / UNION-based** via signatures d'erreurs SQL multi-SGBD.
-- **SQLi aveugle (blind) booléenne** : compare la réponse de plusieurs paires de payloads `TRUE`/`FALSE` et signale une différence de longueur/statut significative, plutôt que de se fier à un simple mot-clé.
-- **SQLi aveugle temporelle** : mesure le temps de réponse de payloads `SLEEP`/`pg_sleep`/`WAITFOR DELAY`/`DBMS_LOCK.SLEEP` (un par SGBD courant) par rapport à une requête de référence (baseline) pour détecter une injection sans retour visible.
-- **Bypass d'authentification SQLi** sur les formulaires de login (détectés via la présence d'un champ `password`, pas juste ≥2 champs texte), avec comparaison à une réponse de référence (non authentifiée) plutôt qu'une simple absence de mot-clé d'erreur — évite les faux positifs classiques de ce genre de détection.
-- **XSS réfléchie avec marqueur unique (canary)** : chaque test injecte un jeton aléatoire à côté du payload, pour attribuer correctement une réflexion à *ce* test précis plutôt qu'à un payload différent ayant réussi plus tôt dans le scan (important sur les pages à état, type mur de commentaires, qui réaffichent tout l'historique).
-- **Détection de blocage WAF** et **contournement automatique** : encodage URL, casse alternée, injection de commentaires SQL (`/**/`), encodage d'entités HTML — rejoués automatiquement si le payload initial est bloqué.
-- **Scan concurrent** (thread pool configurable), retries réseau (échec rapide sur cible injoignable), jitter optionnel.
-- **Rapports** JSON et HTML autonomes.
+- **Zero external dependency**: only Python 3.8+'s standard library (`urllib`, `html.parser`, `concurrent.futures`, `http.cookiejar`, `json`). No `pip install` required.
+- **Automatic crawling** of forms and internal links (same origin, bounded depth).
+- **~90 SQLi payloads + ~73 XSS payloads** per injection point (full arsenal by default, `--quick` mode available for a reduced ~14/~12 arsenal):
+  - SQLi: authentication tautologies, UNION-based (1 to 12 columns), error-based across multiple DBMS (MySQL, PostgreSQL, MSSQL, Oracle, SQLite), stacked queries, anti-WAF obfuscation (inline comments, case variation, encodings, whitespace alternatives), a bit of bonus NoSQL.
+  - XSS: various tags/event handlers (`img`, `svg`, `video`, `details`, `marquee`, `iframe`, `object`…), attribute escaping, space/parenthesis-free bypasses, multiple encodings (named/decimal/hex HTML entities, single/double URL encoding, `\u`, tag splitting), polyglots.
+  - SSTI: `{{7*7}}`, `${7*7}`, `#{7*7}` markers, etc., with an actual server-side evaluation check (looking for the computed result `49`, not just marker reflection).
+- **Error-based / UNION-based SQLi** via multi-DBMS SQL error signatures.
+- **Boolean-based blind SQLi**: compares the response of several `TRUE`/`FALSE` payload pairs and flags a significant length/status difference, rather than relying on a simple keyword.
+- **Time-based blind SQLi**: measures the response time of `SLEEP`/`pg_sleep`/`WAITFOR DELAY`/`DBMS_LOCK.SLEEP` payloads (one per common DBMS) against a baseline request to detect an injection with no visible output.
+- **SQLi authentication bypass** on login forms (detected via the presence of a `password` field, not just ≥2 text fields), compared against a baseline (unauthenticated) response rather than a simple absence of an error keyword — avoids the classic false positives of this kind of detection.
+- **Reflected XSS with a unique canary**: each test injects a random token alongside the payload, to correctly attribute a reflection to *this specific* test rather than to a different payload that succeeded earlier in the scan (important on stateful pages, like a comment wall, that redisplay the whole history).
+- **WAF block detection** and **automatic bypass**: URL encoding, alternating case, SQL comment injection (`/**/`), HTML entity encoding — automatically replayed if the initial payload gets blocked.
+- **Concurrent scanning** (configurable thread pool), network retries (fast failure on an unreachable target), optional jitter.
+- **Reports** in self-contained JSON and HTML.
 
-## Utilisation
+## Usage
 
 ```bash
-python3 SQLi_XSS_tester.py -u http://cible.exemple/ [options]
+python3 SQLi_XSS_tester.py -u http://target.example/ [options]
 ```
 
-### Options principales
+### Main options
 
 | Option | Description |
 |---|---|
-| `-u, --url` | URL cible (obligatoire) |
-| `-t, --timeout` | Timeout par requête (défaut : 10s) |
-| `-w, --workers` | Threads concurrents (défaut : 8) |
-| `--delay` | Délai aléatoire (0..delay s) entre requêtes |
-| `--max-pages` | Nombre max de pages crawlées (défaut : 20) |
-| `--no-crawl` | Ne teste que l'URL donnée, sans crawling |
-| `--no-forms` | Désactive le test des formulaires |
-| `--no-blind` | Désactive les tests d'injection aveugle (plus rapide) |
-| `-q, --quick` | Arsenal réduit (~14 SQLi / ~12 XSS) pour une passe de triage rapide |
-| `--no-bypass` | Désactive les tentatives de contournement WAF |
-| `--cookie` | En-tête `Cookie` brut |
-| `-H, --header` | En-tête additionnel `"Nom: valeur"` (répétable) |
-| `--proxy` | Proxy HTTP(S), ex. `http://127.0.0.1:8080` (Burp/ZAP) |
-| `-o, --output` | Rapport JSON |
-| `--html-report` | Rapport HTML |
-| `-y, --yes` | Ignore la confirmation de périmètre |
-| `-v, --verbose` | Affiche chaque test, pas seulement les résultats positifs |
+| `-u, --url` | Target URL (required) |
+| `-t, --timeout` | Timeout per request (default: 10s) |
+| `-w, --workers` | Concurrent threads (default: 8) |
+| `--delay` | Random delay (0..delay s) between requests |
+| `--max-pages` | Max pages crawled (default: 20) |
+| `--no-crawl` | Only tests the given URL, no crawling |
+| `--no-forms` | Disables form testing |
+| `--no-blind` | Disables blind injection tests (faster) |
+| `-q, --quick` | Reduced arsenal (~14 SQLi / ~12 XSS) for a fast triage pass |
+| `--no-bypass` | Disables WAF bypass attempts |
+| `--cookie` | Raw `Cookie` header |
+| `-H, --header` | Additional header `"Name: value"` (repeatable) |
+| `--proxy` | HTTP(S) proxy, e.g. `http://127.0.0.1:8080` (Burp/ZAP) |
+| `-o, --output` | JSON report |
+| `--html-report` | HTML report |
+| `-y, --yes` | Skips the scope confirmation |
+| `-v, --verbose` | Shows every test, not just positive results |
 
-### Exemple
+### Example
 
 ```bash
-python3 SQLi_XSS_tester.py -u http://127.0.0.1:8000/ --html-report rapport.html -y
+python3 SQLi_XSS_tester.py -u http://127.0.0.1:8000/ --html-report report.html -y
 ```
 
-### Arsenal complet vs. mode rapide
+### Full arsenal vs. quick mode
 
-L'arsenal complet (défaut) vise la couverture maximale : chaque backend/WAF a ses propres angles morts, donc plus de variété de techniques et d'encodages augmente les chances de trouver la faille réelle. Sur une cible distante avec latence réseau et beaucoup de formulaires/paramètres découverts par le crawler, un scan complet peut prendre du temps — ajustez `--workers`, `--no-blind` (les tests aveugles sont les plus lents à cause du temporel), ou `--no-crawl` pour cibler directement un point d'injection connu. Pour une reconnaissance rapide sur de nombreuses cibles, utilisez `-q/--quick`.
+The full arsenal (default) aims for maximum coverage: every backend/WAF has its own blind spots, so more variety in techniques and encodings raises the odds of finding the actual flaw. On a remote target with network latency and many forms/parameters discovered by the crawler, a full scan can take a while — adjust `--workers`, `--no-blind` (blind tests are the slowest because of the timing), or `--no-crawl` to target a known injection point directly. For quick recon across many targets, use `-q/--quick`.
 
-## Sécurité et éthique
+## Security and ethics
 
-Au lancement, l'outil demande une confirmation explicite si la cible n'est pas `localhost`/`127.0.0.1`. `-y` permet de sauter cette confirmation en environnement automatisé.
+On launch, the tool asks for explicit confirmation if the target isn't `localhost`/`127.0.0.1`. `-y` skips this confirmation in an automated environment.
 
-## Limites connues
+## Known limitations
 
-- La détection XSS repose sur la présence du payload (ou de sa forme décodée) dans le HTML brut ; elle ne simule pas un DOM/JS réel et peut manquer des XSS DOM-based pures (déclenchées uniquement côté client sans jamais transiter par le HTML serveur).
-- La détection SQLi aveugle booléenne compare des tailles de réponse : une cible dont le contenu varie déjà naturellement (timestamp, contenu dynamique non lié à l'injection) peut produire un faux positif occasionnel — vérifiez manuellement les résultats `sqli-boolean-blind` avant de les considérer confirmés.
-- Le contournement de WAF est heuristique et n'est pas garanti contre tous les WAF, en particulier les solutions commerciales à inspection contextuelle avancée.
+- XSS detection relies on the presence of the payload (or its decoded form) in the raw HTML; it doesn't simulate an actual DOM/JS environment and can miss purely DOM-based XSS (triggered only client-side, never passing through server HTML).
+- Boolean-based blind SQLi detection compares response sizes: a target whose content already varies naturally (timestamp, dynamic content unrelated to the injection) can occasionally produce a false positive — manually verify `sqli-boolean-blind` results before treating them as confirmed.
+- WAF bypass is heuristic and isn't guaranteed against every WAF, particularly commercial solutions with advanced contextual inspection.
 
-## Développement et tests
+## Development and testing
 
-Ce script a été développé et validé contre un labo web volontairement vulnérable maison (Python stdlib pur, 4 niveaux de protection croissante par catégorie de faille : aucune protection, filtre naïf, WAF avec angle mort, et implémentation sécurisée). Ce labo est un outil de développement séparé, non inclus dans ce dépôt.
+This script was developed and validated against a deliberately vulnerable, custom-built web lab (pure Python stdlib, 4 levels of increasing protection per flaw category: no protection, naive filter, WAF with a blind spot, and a secure implementation). This lab is a separate development tool, not included in this repository.
